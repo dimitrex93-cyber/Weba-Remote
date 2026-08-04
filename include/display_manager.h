@@ -49,7 +49,9 @@ public:
       uint16_t minutes = state.restzeitS / 60;
       uint16_t seconds = state.restzeitS % 60;
       snprintf(line, sizeof(line), "Rest: %02u:%02u", minutes, seconds);
-      display_.drawStr(0, 60, line);
+      // y=56 statt 60 (Review 04.08.2026): sonst überlappte die 6x10-Zeile
+      // mit der 5x7-lastAction-Zeile (Baseline 64, belegt ab Pixel 57).
+      display_.drawStr(0, 56, line);
     }
 
     display_.setFont(u8g2_font_5x7_tr);

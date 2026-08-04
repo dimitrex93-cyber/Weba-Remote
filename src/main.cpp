@@ -16,6 +16,9 @@ uint32_t nextDisplayDueMs = 0;
 uint32_t buttonDownSinceMs = 0;
 uint32_t lastUserActivityMs = 0;
 bool buttonWasDown = false;
+// Review 04.08.2026: Rate-Limit für den Hold-Poll + periodische Statusabfrage
+uint32_t lastStatusRequestMs = 0;
+uint32_t lastStatusPollMs = 0;
 
 void handleButton();
 void printMacAddress();
@@ -51,6 +54,14 @@ void loop() {
 
   enterLightSleepIfIdle(nowMs);
   handleButton();
+
+  // Periodische Statusabfrage (Review 04.08.2026): STATUS_POLL_INTERVAL_MS
+  // war definiert, wurde aber nie benutzt – Temperatur/Batterie/Restzeit
+  // veralteten und das Link-Icon starb nach 12 s.
+  if ((uint32_t)(nowMs - lastStatusPollMs) >= STATUS_POLL_INTERVAL_MS) {
+    espNow.sendCommand(ESPNOW_CMD_REQUEST_STATUS);
+    lastStatusPollMs = nowMs;
+  }
 
   if ((int32_t)(nowMs - nextDisplayDueMs) >= 0) {
     bool linkAlive = remoteState.statusValid &&
@@ -91,8 +102,12 @@ void handleButton() {
     }
   }
 
-  if (isDown && (nowMs - buttonDownSinceMs) > 2500 && ((nowMs / 400) % 2 == 0)) {
+  // Rate-Limit (Review 04.08.2026): vorher feuerte der Hold-Poll über das
+  // ganze 400-ms-Fenster mehrfach (Kanal-Last + Akku-Drain). Jetzt max.
+  // ein Request pro 400 ms.
+  if (isDown && (nowMs - buttonDownSinceMs) > 2500 && (nowMs - lastStatusRequestMs) >= 400) {
     espNow.sendCommand(ESPNOW_CMD_REQUEST_STATUS);
+    lastStatusRequestMs = nowMs;
     lastUserActivityMs = nowMs;
   }
 
@@ -133,7 +148,9 @@ void enterLightSleepIfIdle(uint32_t nowMs) {
   esp_light_sleep_start();
 
   display.wake();
-  delay(20);
+  // WiFi-Stack nach dem Light-Sleep wieder hochfahren lassen, bevor der
+  // Status-Request rausgeht (Review 04.08.2026).
+  delay(150);
   lastUserActivityMs = millis();
   espNow.sendCommand(ESPNOW_CMD_REQUEST_STATUS);
 }
